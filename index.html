@@ -1,1 +1,237 @@
-"Hello Cruel World" 
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hello Cruel World</title>
+<meta name="description" content="Projects published on GitHub Pages by wynneevans.">
+<style>
+  :root {
+    --bg: #fafaf8;
+    --card: #ffffff;
+    --text: #1c1c1a;
+    --muted: #6b6b66;
+    --border: #e4e2dc;
+    --accent: #1f5fbf;
+    --chip: #eef1f6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141415;
+      --card: #1c1c1e;
+      --text: #ececea;
+      --muted: #9a9a94;
+      --border: #2d2d30;
+      --accent: #7aa7ee;
+      --chip: #26272b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 820px; margin: 0 auto; padding: 48px 16px 64px; }
+  h1 { font-size: 1.9rem; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+  .controls { margin-bottom: 20px; }
+  input[type="search"] {
+    width: 100%;
+    padding: 10px 12px;
+    font: inherit;
+    color: var(--text);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .grid { display: grid; gap: 14px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .card h2 { font-size: 1.1rem; margin: 0 0 4px; }
+  .card h2 a { color: var(--accent); text-decoration: none; }
+  .card h2 a:hover { text-decoration: underline; }
+  .card p { margin: 0 0 10px; }
+  .desc.empty { color: var(--muted); font-style: italic; }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center;
+          font-size: 0.85rem; color: var(--muted); }
+  .meta a { color: var(--muted); }
+  .chip { background: var(--chip); border-radius: 999px; padding: 1px 9px; font-size: 0.8rem; }
+  .status { color: var(--muted); padding: 24px 0; }
+  footer { margin-top: 36px; font-size: 0.85rem; color: var(--muted); }
+  footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Hello Cruel World</h1>
+  <p class="sub">Wynne Evans: Projects</p>
+
+  <div class="controls">
+    <input id="filter" type="search" placeholder="Filter projects" aria-label="Filter projects" hidden>
+  </div>
+
+  <div id="status" class="status">Loading projects...</div>
+  <div id="list" class="grid"></div>
+
+  <footer>
+    <a id="profile-link" href="#">GitHub profile</a>
+  </footer>
+</main>
+
+<script>
+(function () {
+  // ---- Settings you may want to change ----
+  var USERNAME = "wynneevans";
+  // If set (e.g. "showcase"), only repos with this GitHub topic are listed.
+  // Leave empty to list every public repo that has Pages enabled.
+  var REQUIRED_TOPIC = "";
+  var SHOW_FORKS = false;
+  // ------------------------------------------
+
+  var HOME_REPO = USERNAME + ".github.io";
+  var CACHE_KEY = "pages-index-" + USERNAME;
+  var CACHE_MS = 10 * 60 * 1000; // 10 minutes, to stay well inside API rate limits
+
+  var statusEl = document.getElementById("status");
+  var listEl = document.getElementById("list");
+  var filterEl = document.getElementById("filter");
+  document.getElementById("profile-link").href = "https://github.com/" + USERNAME;
+
+  var projects = [];
+
+  function readCache() {
+    try {
+      var raw = sessionStorage.getItem(CACHE_KEY);
+      if (!raw) return null;
+      var obj = JSON.parse(raw);
+      if (Date.now() - obj.time > CACHE_MS) return null;
+      return obj.data;
+    } catch (e) { return null; }
+  }
+
+  function writeCache(data) {
+    try {
+      sessionStorage.setItem(CACHE_KEY, JSON.stringify({ time: Date.now(), data: data }));
+    } catch (e) { /* storage unavailable: fine */ }
+  }
+
+  function fetchRepos() {
+    var cached = readCache();
+    if (cached) return Promise.resolve(cached);
+    var url = "https://api.github.com/users/" + encodeURIComponent(USERNAME) +
+              "/repos?per_page=100&sort=updated";
+    return fetch(url, { headers: { Accept: "application/vnd.github+json" } })
+      .then(function (res) {
+        if (!res.ok) {
+          if (res.status === 403) throw new Error("GitHub's rate limit was reached. Try again in a few minutes.");
+          throw new Error("GitHub returned an error (" + res.status + ").");
+        }
+        return res.json();
+      })
+      .then(function (data) { writeCache(data); return data; });
+  }
+
+  function keep(repo) {
+    if (!repo.has_pages) return false;
+    if (repo.name.toLowerCase() === HOME_REPO.toLowerCase()) return false;
+    if (repo.archived) return false;
+    if (repo.fork && !SHOW_FORKS) return false;
+    if (REQUIRED_TOPIC && (repo.topics || []).indexOf(REQUIRED_TOPIC) === -1) return false;
+    return true;
+  }
+
+  function siteUrl(repo) {
+    // Use a custom homepage if the repo has one set, else the standard Pages address.
+    if (repo.homepage && /^https?:\/\//i.test(repo.homepage)) return repo.homepage;
+    return "https://" + USERNAME.toLowerCase() + ".github.io/" + encodeURIComponent(repo.name) + "/";
+  }
+
+  function formatDate(iso) {
+    try {
+      return new Date(iso).toLocaleDateString("en-GB", { year: "numeric", month: "short", day: "numeric" });
+    } catch (e) { return ""; }
+  }
+
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function render(items) {
+    listEl.textContent = "";
+    if (!items.length) {
+      statusEl.textContent = projects.length ? "No projects match that filter." : "No published projects found yet.";
+      statusEl.hidden = false;
+      return;
+    }
+    statusEl.hidden = true;
+
+    items.forEach(function (repo) {
+      var card = el("article", "card");
+
+      var h2 = el("h2");
+      var link = el("a", null, repo.name);
+      link.href = siteUrl(repo);
+      h2.appendChild(link);
+      card.appendChild(h2);
+
+      var desc = el("p", "desc" + (repo.description ? "" : " empty"),
+                    repo.description || "No description yet.");
+      card.appendChild(desc);
+
+      var meta = el("div", "meta");
+      if (repo.language) meta.appendChild(el("span", "chip", repo.language));
+      (repo.topics || []).slice(0, 4).forEach(function (t) {
+        meta.appendChild(el("span", "chip", t));
+      });
+      meta.appendChild(el("span", null, "Updated " + formatDate(repo.pushed_at || repo.updated_at)));
+      var code = el("a", null, "View code");
+      code.href = repo.html_url;
+      meta.appendChild(code);
+      card.appendChild(meta);
+
+      listEl.appendChild(card);
+    });
+  }
+
+  function applyFilter() {
+    var q = filterEl.value.trim().toLowerCase();
+    var items = projects.filter(function (r) {
+      if (!q) return true;
+      var hay = (r.name + " " + (r.description || "") + " " + (r.topics || []).join(" ")).toLowerCase();
+      return hay.indexOf(q) !== -1;
+    });
+    render(items);
+  }
+
+  fetchRepos()
+    .then(function (repos) {
+      projects = repos.filter(keep).sort(function (a, b) {
+        return new Date(b.pushed_at || b.updated_at) - new Date(a.pushed_at || a.updated_at);
+      });
+      filterEl.hidden = projects.length < 6; // only worth showing with many projects
+      applyFilter();
+    })
+    .catch(function (err) {
+      statusEl.textContent = "Couldn't load the project list: " + err.message;
+      var fallback = el("p");
+      var a = el("a", null, "Browse my repositories on GitHub");
+      a.href = "https://github.com/" + USERNAME + "?tab=repositories";
+      fallback.appendChild(a);
+      listEl.textContent = "";
+      listEl.appendChild(fallback);
+    });
+
+  filterEl.addEventListener("input", applyFilter);
+})();
+</script>
+</body>
+</html>
